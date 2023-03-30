@@ -48,6 +48,84 @@ const execute = async (command, options = {}) => {
   }
 };
 
+const handleCfgProjects = async (authSharedSecret = undefined) => {
+  for (item of opcos) {
+    const cfgName = `cfg-${item}-${env}`;
+    // if (cfgName === "cfg-fr-generaleoptique-acceptance") {
+    console.log("--->", `git clone git@github.com:GrandVisionHQ/${cfgName}`);
+    const currentPath = `${cfgPath}/${cfgName}`;
+
+    if (!fs.existsSync(currentPath)) {
+      console.log(`Cloning ${currentPath}`);
+      await execute(`git clone git@github.com:GrandVisionHQ/${cfgName}`, {
+        cwd: `${cfgPath}`,
+      });
+
+      console.log(`Checking out branch for ${cfgName}`);
+      await execute(`git checkout -b feat/social-merge-func-${env}`, {
+        cwd: `${currentPath}`,
+      });
+
+      console.log(`Checking out branch for ${cfgName}`);
+      await execute(`git-crypt unlock`, {
+        cwd: `${currentPath}`,
+      });
+    } else {
+      console.log("Init project already done");
+    }
+
+    const secretConfigFile = `${cfgPath}/${cfgName}/customer-alternate-login-merge-functions.env.sec`;
+    // create secrets file
+    if (!fs.existsSync(secretConfigFile)) {
+      console.log("Writing CFG secret file");
+
+      // TODO edit secret for prod
+      await fs.writeFileSync(
+        secretConfigFile,
+        `
+SERVICEBUS_ALTERNATE_ACCOUNT_MERGE_QUEUE=customers_alternate-login-merge-functions-queue
+API_GRAPHQL_GATEWAY=https://${item}-${env}-api.grandvision.io/graphql
+AUTH_SHARED_SECRET_CUSTOMER_SERVICE=${
+          authSharedSecret
+            ? authSharedSecret
+            : `${item}-Generate_a_random_secret_for_this_in_production._Must_be_shared_between_customer_service_and_callers`
+        }`
+      );
+    } else {
+      console.log("CFG secret file already available");
+    }
+
+    // update config.yaml
+    const configYamlFilePath = `${cfgPath}/${cfgName}/config.yaml`;
+    const configFileContent = fs.readFileSync(configYamlFilePath).toString();
+
+    // update config.yml
+    if (!configFileContent.match(/customer-alternate-login-merge-functions/g)) {
+      const data = configFileContent.split("\n");
+      let toInsertFileLineIndex = null;
+      data.forEach((fileLine, index) => {
+        if (fileLine.includes("alias: customer-service")) {
+          toInsertFileLineIndex = index;
+        }
+      });
+
+      const toInsert = [
+        "    - alias: customer-alternate-login-merge-functions",
+        "      git: git@github.com:GrandVisionHQ/customer-alternate-login-merge-functions.git",
+        "      tag: v*.*.*-rc.*", // TODO edit for prod
+      ];
+      toInsert
+        .reverse()
+        .forEach((item) => data.splice(toInsertFileLineIndex, 0, item));
+
+      console.log("Write config.yaml", cfgName);
+      fs.writeFileSync(configYamlFilePath, data.join("\n"));
+    } else {
+      console.log("config.yaml already updated", cfgName);
+    }
+  }
+};
+
 const handleEnvProjects = async (authSharedSecret = undefined) => {
   for (item of opcos) {
     const envName = `env-${item}`;
@@ -313,84 +391,6 @@ const updateAllRepos = async (isCfg = false) => {
   }
 };
 
-const handleCfgProjects = async (authSharedSecret = undefined) => {
-  for (item of opcos) {
-    const cfgName = `cfg-${item}-${env}`;
-    // if (cfgName === "cfg-fr-generaleoptique-acceptance") {
-    console.log("--->", `git clone git@github.com:GrandVisionHQ/${cfgName}`);
-    const currentPath = `${cfgPath}/${cfgName}`;
-
-    if (!fs.existsSync(currentPath)) {
-      console.log(`Cloning ${currentPath}`);
-      await execute(`git clone git@github.com:GrandVisionHQ/${cfgName}`, {
-        cwd: `${cfgPath}`,
-      });
-
-      console.log(`Checking out branch for ${cfgName}`);
-      await execute(`git checkout -b feat/social-merge-func-${env}`, {
-        cwd: `${currentPath}`,
-      });
-
-      console.log(`Checking out branch for ${cfgName}`);
-      await execute(`git-crypt unlock`, {
-        cwd: `${currentPath}`,
-      });
-    } else {
-      console.log("Init project already done");
-    }
-
-    const secretConfigFile = `${cfgPath}/${cfgName}/customer-alternate-login-merge-functions.env.sec`;
-    // create secrets file
-    if (!fs.existsSync(secretConfigFile)) {
-      console.log("Writing CFG secret file");
-
-      // TODO edit secret for prod
-      await fs.writeFileSync(
-        secretConfigFile,
-        `
-SERVICEBUS_ALTERNATE_ACCOUNT_MERGE_QUEUE=customers_alternate-login-merge-functions-queue
-API_GRAPHQL_GATEWAY=https://${item}-${env}-api.grandvision.io/graphql
-AUTH_SHARED_SECRET_CUSTOMER_SERVICE=${
-          authSharedSecret
-            ? authSharedSecret
-            : `${item}-Generate_a_random_secret_for_this_in_production._Must_be_shared_between_customer_service_and_callers`
-        }`
-      );
-    } else {
-      console.log("CFG secret file already available");
-    }
-
-    // update config.yaml
-    const configYamlFilePath = `${cfgPath}/${cfgName}/config.yaml`;
-    const configFileContent = fs.readFileSync(configYamlFilePath).toString();
-
-    // update config.yml
-    if (!configFileContent.match(/customer-alternate-login-merge-functions/g)) {
-      const data = configFileContent.split("\n");
-      let toInsertFileLineIndex = null;
-      data.forEach((fileLine, index) => {
-        if (fileLine.includes("alias: customer-service")) {
-          toInsertFileLineIndex = index;
-        }
-      });
-
-      const toInsert = [
-        "    - alias: customer-alternate-login-merge-functions",
-        "      git: git@github.com:GrandVisionHQ/customer-alternate-login-merge-functions.git",
-        "      tag: v*.*.*-rc.*", // TODO edit for prod
-      ];
-      toInsert
-        .reverse()
-        .forEach((item) => data.splice(toInsertFileLineIndex, 0, item));
-
-      console.log("Write config.yaml", cfgName);
-      fs.writeFileSync(configYamlFilePath, data.join("\n"));
-    } else {
-      console.log("config.yaml already updated", cfgName);
-    }
-  }
-};
-
 const insertToFile = (configFileContent, matchContition, toInsertList) => {
   const data = configFileContent.split("\n");
   let toInsertFileLineIndex = null;
@@ -413,38 +413,6 @@ const insertToFile = (configFileContent, matchContition, toInsertList) => {
 };
 
 const prs = async () => {
-  // const rs = [
-  //   "https://github.com/GrandVisionHQ/env-nl-pearle/pull/5714",
-  //   "https://github.com/GrandVisionHQ/env-be-grandoptical/pull/5426",
-  //   "https://github.com/GrandVisionHQ/env-es-masvision/pull/3645",
-  //   "https://github.com/GrandVisionHQ/env-es-optica2000/pull/5124",
-  //   "https://github.com/GrandVisionHQ/env-fr-grandoptical/pull/4457",
-  //   "https://github.com/GrandVisionHQ/env-it-grandvision/pull/5949",
-  //   "https://github.com/GrandVisionHQ/env-ie-visionexpress/pull/6453",
-  //   "https://github.com/GrandVisionHQ/env-gb-visionexpress/pull/6267",
-  //   "https://github.com/GrandVisionHQ/env-it-grandvision/pull/5949",
-  //   "https://github.com/GrandVisionHQ/env-nl-eyewish/pull/5358",
-  //   "https://github.com/GrandVisionHQ/env-pt-grandoptical/pull/2103",
-  //   "https://github.com/GrandVisionHQ/env-pt-multiopticas/pull/5834",
-  //   "https://github.com/GrandVisionHQ/env-fr-generaleoptique/pull/4425",
-  // ];
-
-  // old
-  // const rs = [
-  //   "https://github.com/GrandVisionHQ/cfg-nl-pearle-acceptance/pull/184",
-  //   "https://github.com/GrandVisionHQ/cfg-be-grandoptical-acceptance/pull/158",
-  //   "https://github.com/GrandVisionHQ/cfg-es-masvision-acceptance/pull/181",
-  //   "https://github.com/GrandVisionHQ/cfg-es-optica2000-acceptance/pull/184",
-  //   "https://github.com/GrandVisionHQ/cfg-fr-grandoptical-acceptance/pull/226",
-  //   "https://github.com/GrandVisionHQ/cfg-it-grandvision-acceptance/pull/204",
-  //   "https://github.com/GrandVisionHQ/cfg-ie-visionexpress-acceptance/pull/230",
-  //   "https://github.com/GrandVisionHQ/cfg-gb-visionexpress-acceptance/pull/238",
-  //   "https://github.com/GrandVisionHQ/cfg-pt-grandoptical-acceptance/pull/77",
-  //   "https://github.com/GrandVisionHQ/cfg-fr-generaleoptique-acceptance/pull/227",
-  //   "https://github.com/GrandVisionHQ/cfg-pt-multiopticas-acceptance/pull/226",
-  //   "https://github.com/GrandVisionHQ/cfg-be-pearle-acceptance/pull/190",
-  //   "https://github.com/GrandVisionHQ/cfg-nl-eyewish-acceptance/pull/144",
-  // ]; // feat: add social merge function
   const rs = [
     "https://github.com/GrandVisionHQ/cfg-nl-pearle-acceptance/pull/186",
     "https://github.com/GrandVisionHQ/cfg-be-grandoptical-acceptance/pull/161",
